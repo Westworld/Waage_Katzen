@@ -23,6 +23,8 @@ PubSubClient client(espClient);
 uint32_t mLastTime = 0;
 uint32_t mTimeSeconds = 0;
 
+float GewichtMittel[10];
+int GewichtAnzahl=0;
 
 // HX711 circuit wiring
 const int LOADCELL_DOUT_PIN = D6; //A2;
@@ -41,6 +43,8 @@ const int Buzzer =D7;
   #define Katze "Matti"
   #define Hostname "ScaleMatti"
   const float kalibrierung = 21100.F; //19306.F;
+  float KatzeGewichtStart = 6.8;
+  float KatzeGewichtEnde = 7.5;
 
   // 19306.F  dann 84.4 kg anzeige als 93.3 kg
 
@@ -74,12 +78,16 @@ void ICACHE_RAM_ATTR handleInterrupt() {
 #ifdef Mika
 #define Katze "Mika"
 #define Hostname "ScaleMika"
+float KatzeGewichtStart = 6.5;
+float KatzeGewichtEnde = 7.2;
 const float kalibrierung = 23000.F; //21100.F;
 #endif
 
 #ifdef Buddy
 #define Katze "Buddy"
 #define Hostname "ScaleBuddy"
+float KatzeGewichtStart = 6.0;
+float KatzeGewichtEnde = 6.9;
 const float kalibrierung = 21100.F;
 #endif
 
@@ -371,12 +379,40 @@ void WIFI_Connect()
 
 }
 
+
+float BerechneDurchschnitt(float neu) {
+  if (GewichtAnzahl>9) {
+    for (int i = 0; i<9; i++) {
+      GewichtMittel[i] = GewichtMittel[i+1];
+    }
+    GewichtAnzahl--;
+  }
+
+  GewichtMittel[GewichtAnzahl++] = neu;
+
+  float mittel = 0;
+  for (int i = 0; i<10; i++) {
+      mittel += GewichtMittel[i];
+  }
+  return (mittel / GewichtAnzahl);  
+}
+
+
 // #############################################################
 
 void SendeStatus(float Gewicht, int warum, float Gelesen) {
+  UDBDebug("Waage "+String(Katze)+" " +String(Gewicht));
 
-  MQTT_Send("HomeServer/Tiere/"+String(Katze), String(Gewicht));
-  //UDBDebug("HomeServer/Tiere/"+String(Katze)+" " +String(Gewicht));
+  float sende = roundf(Gewicht * 100) / 100;
+  MQTT_Send("display/Gewicht", sende);
+
+  if ((sende > KatzeGewichtStart) && (sende < KatzeGewichtEnde)) {
+    UDBDebug(String(Katze)+" gewogen: "+String(sende));
+    sende = BerechneDurchschnitt(Gewicht);
+    sende = roundf(sende * 100) / 100;
+    UDBDebug(String(Katze)+" Durchschnitt: "+String(sende));
+    MQTT_Send("HomeServer/Tiere/"+String(Katze), String(sende));
+  }  
 
   #ifdef Buddy
     if (Gewicht>9) {
