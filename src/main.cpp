@@ -30,7 +30,7 @@ const int LOADCELL_SCK_PIN = D5; // A3;
 
 // wiring OLED D1=SCL, D2=SDA
 // Taster D7
-bool ButtonWasClicked = false;
+//bool ButtonWasClicked = false;
 
 const int Buzzer =D7;
 
@@ -61,11 +61,13 @@ const int Buzzer =D7;
   #define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
   Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-  const int interruptPin = D7;
+ // const int interruptPin = D7;
 
+/*
 void ICACHE_RAM_ATTR handleInterrupt() {
   ButtonWasClicked= true;
 }
+*/
 #endif
 
 #ifdef Mika
@@ -120,18 +122,6 @@ void RemoteSetup() {
     Serial.println(WIFI_SSID);
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
-
-    // Register host name in WiFi and mDNS
-/*
-    String hostNameWifi = HOST_NAME;
-    hostNameWifi.concat(".local");
-
-#ifdef ESP8266 // Only for it
-    WiFi.hostname(hostNameWifi);
-#endif
-*/
-
-
   
 }
 
@@ -209,8 +199,8 @@ void setup() {
       display.println(WiFi.localIP());
       display.display();
 
-      pinMode(interruptPin, INPUT_PULLUP);
-      attachInterrupt(digitalPinToInterrupt(interruptPin), handleInterrupt, CHANGE);
+      //pinMode(interruptPin, INPUT_PULLUP);
+      //attachInterrupt(digitalPinToInterrupt(interruptPin), handleInterrupt, CHANGE);
 
   #endif
 
@@ -232,6 +222,7 @@ void setup() {
 #endif
 
   delay(500);
+  UDBDebug(String(Katze)+ " started");
 }
 
 void loop() {
@@ -248,14 +239,14 @@ void loop() {
         while (!client.connected()) {
             client.connect(Katze,MQTT_User,MQTT_Pass);
             delay(100);
-            Serial.println("reconnect mqtt");
+            UDBDebug(String(Katze)+" reconnect mqtt");
         }
     }
   client.loop();
 
 #ifdef Matti
-  if (ButtonWasClicked) 
-    RealhandleInterrupt();
+  //if (ButtonWasClicked) 
+  //  RealhandleInterrupt();
 #endif
   
   Gelesen = scale.get_units(10);
@@ -296,18 +287,11 @@ void loop() {
               #endif
         
               Gewicht = Gelesen;
-              //rdebugVln("neuer wert, senden");  
               SendeStatus(Gelesen, 1, Gelesen); 
               TaraCounter = 0;
       }
-      else
-      {
-         //SendeStatus(Gelesen, 2);
-         //rdebugVln("bereits gesendet ");
-      }
      }
      else {
-      //SendeStatus(Gelesen, 3);
       AltGewicht = Gelesen;
      }
 
@@ -389,38 +373,8 @@ void WIFI_Connect()
 
 void SendeStatus(float Gewicht, int warum, float Gelesen) {
 
-  WiFiClient client;
-  if (!client.connect(host, httpPort)) {
-    //  rdebugEln("Client Timeout");    
-    return;
-  }
-
-//  debugI("Sende Messungen %d", (long) (Gewicht*10));
-
-  String job = Katze;
-  String url = "/4DAction/Strom?Job="+job+"&Gewicht=";
-  url += Gewicht;
-  url += "&Grund=";
-  url += warum;
-  url += "&Gelesen=";
-  url += Gelesen;
-
- // debugV("Send URL %s", url.c_str());
-
-  Serial.println("Send URL "+url);
- 
-  // This will send the request to the server
-  client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-               "Host: " + host + "\r\n" + 
-               "Connection: close\r\n\r\n");
-  unsigned long timeout = millis();
-  while (client.available() == 0) {
-    if (millis() - timeout > 1000) {
-   //   rdebugVln("Client Send Timeout");    
-      client.stop();
-      return;
-    }
-  }
+  MQTT_Send("HomeServer/Tiere/"+String(Katze), String(Gewicht));
+  UDBDebug("HomeServer/Tiere/"+String(Katze)+" " +String(Gewicht));
 
   #ifdef Buddy
     if (Gewicht>9) {
@@ -438,81 +392,23 @@ void SendeStatus(float Gewicht, int warum, float Gelesen) {
     }
   #endif
   
-  // Read all the lines of the reply from server and print them to Serial
-  while(client.available()){
-    String line = client.readStringUntil('\r');
-   // debugV("web answer: %s", line.c_str());
-  }
-  
 }
 
-#ifdef Matti
-void RealhandleInterrupt() {
-  ButtonWasClicked= false;
-
-  if (Gewicht < 2.5) {
-        TaraCounter = 0;
-    //    rdebugVln("Reset Tara");
-        scale.tare(20);  
-//        Gelesen = scale.get_units(10);
-        display.setTextSize(2); // Draw 2X-scale text
-        display.setTextColor(SSD1306_WHITE);
-        display.setCursor(10, 50);
-        display.print(("Tara..."));
-        display.display();
-    
-  }
-  else
-  {
-  
-        WiFiClient client;
-      if (!client.connect(host, httpPort)) {
-      //    rdebugVln("Client Timeout");    
-        return;
-      }
-    
-     //     rdebugV("Sende Messungen Taster ");
-          //rdebugVln(Gewicht);
-      
-      display.setTextSize(2); // Draw 2X-scale text
-      display.setTextColor(SSD1306_WHITE);
-      display.setCursor(10, 40);
-      display.print(("send..."));
-      display.display();
-    
-      String job = "Timmi";
-      String url = "/4DAction/Strom?Job="+job+"&Gewicht=";
-      url += Gewicht;
-     
-      // This will send the request to the server
-      client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-                   "Host: " + host + "\r\n" + 
-                   "Connection: close\r\n\r\n");
-      unsigned long timeout = millis();
-      while (client.available() == 0) {
-        if (millis() - timeout > 1000) {
-       //   rdebugVln("Client Send Timeout");    
-          client.stop();
-          return;
-        }
-       
-      }
-      
-      // Read all the lines of the reply from server and print them to Serial
-      while(client.available()){
-        String line = client.readStringUntil('\r');
-        //rdebugV(line);
-      }
-  }
-}
-#endif
 
 void MQTT_callback(char* topic, byte* payload, unsigned int length) {
   UDBDebug("MQTT Callback "+String(topic));
 }
 
+void MQTT_Send(String topic, String value) {
+    Serial.println("MQTT " +String(topic)+" "+value) ;
+    if (!client.publish(topic.c_str(), value.c_str(), true)) {
+       UDBDebug("MQTT error");  
+    };
+      UDBDebug(String(topic)+" - "+value);
+}
+
 void MQTT_Send(char const * topic, String value) {
-    //Serial.println("MQTT " +String(topic)+" "+value) ;
+    Serial.println("MQTT " +String(topic)+" "+value) ;
     if (!client.publish(topic, value.c_str(), true)) {
        UDBDebug("MQTT error");  
     };

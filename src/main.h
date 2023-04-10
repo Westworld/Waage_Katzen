@@ -3,6 +3,7 @@ void SendeStatus(float Gewicht, int warum, float Gelesen);
 void WIFI_Connect();
 void mydelay(long thedelay);
 void UDBDebug(String message);
+void MQTT_Send(String topic, String value);
 void MQTT_Send(char const * topic, String value);
 void MQTT_Send(char const * topic, float value); 
 void MQTT_Send(char const * topic, int16_t value);
