@@ -38,7 +38,8 @@ const int Buzzer =D7;
 // nicht für Timmi nehmen, dafür Timmi WS2812
 
 #ifdef Matti
-  #define Katze "ScaleMatti"
+  #define Katze "Matti"
+  #define Hostname "ScaleMatti"
   const float kalibrierung = 21100.F; //19306.F;
 
   // 19306.F  dann 84.4 kg anzeige als 93.3 kg
@@ -71,18 +72,21 @@ void ICACHE_RAM_ATTR handleInterrupt() {
 #endif
 
 #ifdef Mika
-#define Katze "ScaleMika"
+#define Katze "Mika"
+#define Hostname "ScaleMika"
 const float kalibrierung = 23000.F; //21100.F;
 #endif
 
 #ifdef Buddy
-#define Katze "ScaleBuddy"
+#define Katze "Buddy"
+#define Hostname "ScaleBuddy"
 const float kalibrierung = 21100.F;
 #endif
 
 
 #ifdef Timmi
-#define Katze "ScaleTimmi"
+#define Katze "Timmi"
+#define Hostname "ScaleTimmi"
 const float kalibrierung = -21600.F;
 // 82kg anzeige als
 // -22400 = 74kg
@@ -90,8 +94,6 @@ const float kalibrierung = -21600.F;
 // 21100 = 86
 // 21600 = 82
 #endif
-
-#define HOST_NAME Katze
 
 char logString[200];
 float Gewicht=0;
@@ -155,7 +157,7 @@ void setup() {
     delay(1000);
 
    //WIFI_Connect();  // in remotedebug
-  ArduinoOTA.setHostname(Katze);
+  ArduinoOTA.setHostname(Hostname);
   
   ArduinoOTA
     .onStart([]() {
@@ -350,7 +352,7 @@ void WIFI_Connect()
   WiFi.disconnect();
   Serial.println("Booting Sketch...");
   WiFi.mode(WIFI_STA);
-  WiFi.hostname(Katze);
+  WiFi.hostname(Hostname);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
     // Wait for connection
   for (int i = 0; i < 25; i++)
@@ -374,7 +376,7 @@ void WIFI_Connect()
 void SendeStatus(float Gewicht, int warum, float Gelesen) {
 
   MQTT_Send("HomeServer/Tiere/"+String(Katze), String(Gewicht));
-  UDBDebug("HomeServer/Tiere/"+String(Katze)+" " +String(Gewicht));
+  //UDBDebug("HomeServer/Tiere/"+String(Katze)+" " +String(Gewicht));
 
   #ifdef Buddy
     if (Gewicht>9) {
@@ -400,11 +402,11 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length) {
 }
 
 void MQTT_Send(String topic, String value) {
-    Serial.println("MQTT " +String(topic)+" "+value) ;
+    //Serial.println("MQTT " +String(topic)+" "+value) ;
     if (!client.publish(topic.c_str(), value.c_str(), true)) {
        UDBDebug("MQTT error");  
     };
-      UDBDebug(String(topic)+" - "+value);
+    //  UDBDebug(String(topic)+" - "+value);
 }
 
 void MQTT_Send(char const * topic, String value) {
