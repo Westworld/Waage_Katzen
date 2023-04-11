@@ -401,16 +401,16 @@ float BerechneDurchschnitt(float neu) {
 // #############################################################
 
 void SendeStatus(float Gewicht, int warum, float Gelesen) {
-  UDBDebug("Waage "+String(Katze)+" " +String(Gewicht));
+  //UDBDebug("Waage "+String(Katze)+" " +String(Gewicht));
 
   float sende = roundf(Gewicht * 100) / 100;
-  MQTT_Send("display/Gewicht", sende);
+  if (sende > 2)
+    MQTT_Send("display/Gewicht", sende);
 
   if ((sende > KatzeGewichtStart) && (sende < KatzeGewichtEnde)) {
-    UDBDebug(String(Katze)+" gewogen: "+String(sende));
     sende = BerechneDurchschnitt(Gewicht);
     sende = roundf(sende * 100) / 100;
-    UDBDebug(String(Katze)+" Durchschnitt: "+String(sende));
+    UDBDebug(String(Katze)+" gewogen: "+String(Gelesen)+" Durchschnitt: "+String(sende));
     MQTT_Send("HomeServer/Tiere/"+String(Katze), String(sende));
   }  
 
@@ -450,7 +450,7 @@ void MQTT_Send(char const * topic, String value) {
     if (!client.publish(topic, value.c_str(), true)) {
        UDBDebug("MQTT error");  
     };
-      UDBDebug(String(topic)+" - "+value);
+      //UDBDebug(String(topic)+" - "+value);
 }
 
 void MQTT_Send(char const * topic, float value) {
