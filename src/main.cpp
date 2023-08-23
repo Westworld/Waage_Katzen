@@ -6,24 +6,22 @@
 #include <PubSubClient.h>
 #include "main.h"
 
-const char* host = "192.168.0.59";
-const int httpPort = 80;
-
 #define UDPDEBUG 1
 #ifdef UDPDEBUG
 WiFiUDP udp;
-const char * udpAddress = "192.168.0.34";
+const char * udpAddress = "192.168.0.95";
 const int udpPort = 19814;
 #endif
 
 const char* MQTT_BROKER = "192.168.0.46";
 WiFiClient espClient;
+WiFiEventHandler stationDisconnectedHandler;
 PubSubClient client(espClient);
 
 uint32_t mLastTime = 0;
 uint32_t mTimeSeconds = 0;
 
-float GewichtMittel[10];
+float GewichtMittel[11];
 int GewichtAnzahl=0;
 
 // HX711 circuit wiring
@@ -44,7 +42,7 @@ const int Buzzer =D7;
   #define Hostname "ScaleMatti"
   const float kalibrierung = 21100.F; //19306.F;
   float KatzeGewichtStart = 6.8;
-  float KatzeGewichtEnde = 7.5;
+  float KatzeGewichtEnde = 7.8;
 
   // 19306.F  dann 84.4 kg anzeige als 93.3 kg
 
@@ -112,36 +110,52 @@ int TaraCounter = 0;
 HX711 scale;
 
 
-void RemoteSetup() {
+// #############################################################
+void WIFI_Connect()
+{
+      WiFi.disconnect();
+      Serial.println("Booting Sketch...");
+      delay(100);
+      WiFi.begin(WIFI_SSID, WIFI_PASS);
+      
+      short counter = 0;
+        while (WiFi.status() != WL_CONNECTED) {
+          delay(100);
+          Serial.print(".");
+          if (++counter > 100)
+            ESP.restart();
+        }
 
-   Serial.println("**** Setup: initializing ...");
-
-    // WiFi connection
-
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-    Serial.println("");
-
-    // Wait for connection
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
-    }
-
-    Serial.println("");
-    Serial.print("Connected to ");
-    Serial.println(WIFI_SSID);
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
-  
 }
 
+
+void MQTTreconnect() {
+  if (!client.connected()) {  // MQTT
+        while (!client.connected()) {
+            client.connect(Katze,MQTT_User,MQTT_Pass);
+            delay(100);
+        }
+        UDBDebug(String(Katze)+" reconnect mqtt");
+    }
+}
+
+void onStationDisconnected(const WiFiEventSoftAPModeStationDisconnected& evt) {
+  WIFI_Connect();
+  UDBDebug(String(Katze)+" reconnect Wifi");
+}
 
 void setup() {
   Serial.begin(115200);
   Serial.println("CatDogScale");
-  RemoteSetup();
-   client.setServer(MQTT_BROKER, 1883);
-   client.setCallback(MQTT_callback);
+  WiFi.mode(WIFI_STA);
+  WiFi.hostname(Hostname);
+  stationDisconnectedHandler = WiFi.onSoftAPModeStationDisconnected(&onStationDisconnected);
+
+  WIFI_Connect();
+   
+  client.setServer(MQTT_BROKER, 1883);
+  client.setCallback(MQTT_callback);
+  MQTTreconnect(); 
 
   #ifdef Matti
   Serial.println("Init Display");
@@ -162,9 +176,6 @@ void setup() {
   display.display();
   #endif
 
-    delay(1000);
-
-   //WIFI_Connect();  // in remotedebug
   ArduinoOTA.setHostname(Hostname);
   
   ArduinoOTA
@@ -231,27 +242,29 @@ void setup() {
   display.display();
 #endif
 
-  delay(500);
   UDBDebug(String(Katze)+ " started");
 }
 
 void loop() {
     float Gelesen=0;
   
+  /*
   if (WiFi.status() != WL_CONNECTED)
     {
       WIFI_Connect();
     }
+   */ 
     
   ArduinoOTA.handle();
 
+
   if (!client.connected()) {  // MQTT
-        while (!client.connected()) {
-            client.connect(Katze,MQTT_User,MQTT_Pass);
-            delay(100);
-            UDBDebug(String(Katze)+" reconnect mqtt");
-        }
+        client.disconnect();
+        delay(250);
+        MQTTreconnect();
     }
+
+
   client.loop();
 
 #ifdef Matti
@@ -338,7 +351,7 @@ void loop() {
       SendeStatus(Gewicht, 0, Gelesen);
     Messungen = 0;
   }
-  mydelay(1000);
+  mydelay(10);
   
 }
 
@@ -347,6 +360,8 @@ unsigned long start = millis();
 
   while ((start+thedelay)>millis()) {
    // Debug.handle();
+     ArduinoOTA.handle();
+  client.loop();
     delay(1);
   }
 }
@@ -354,30 +369,6 @@ unsigned long start = millis();
 
 
 
-// #############################################################
-void WIFI_Connect()
-{
-  WiFi.disconnect();
-  Serial.println("Booting Sketch...");
-  WiFi.mode(WIFI_STA);
-  WiFi.hostname(Hostname);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-    // Wait for connection
-  for (int i = 0; i < 25; i++)
-  {
-    if ( WiFi.status() != WL_CONNECTED ) {
-      Serial.print ( "." );
-      delay ( 500 );
-    }
-  }
-
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.println("Connection Failed! Rebooting...");
-    delay(5000);
-    ESP.restart();
-  }
-
-}
 
 
 float BerechneDurchschnitt(float neu) {
@@ -391,7 +382,7 @@ float BerechneDurchschnitt(float neu) {
   GewichtMittel[GewichtAnzahl++] = neu;
 
   float mittel = 0;
-  for (int i = 0; i<10; i++) {
+  for (int i = 0; i<GewichtAnzahl; i++) {
       mittel += GewichtMittel[i];
   }
   return (mittel / GewichtAnzahl);  
@@ -401,16 +392,17 @@ float BerechneDurchschnitt(float neu) {
 // #############################################################
 
 void SendeStatus(float Gewicht, int warum, float Gelesen) {
-  //UDBDebug("Waage "+String(Katze)+" " +String(Gewicht));
+  UDBDebug("Waage "+String(Katze)+" " +String(Gewicht));
 
   float sende = roundf(Gewicht * 100) / 100;
   if (sende > 2)
     MQTT_Send("display/Gewicht", sende);
+    //UDBDebug(String(Katze)+" gewogen: "+String(Gelesen));
 
   if ((sende > KatzeGewichtStart) && (sende < KatzeGewichtEnde)) {
     sende = BerechneDurchschnitt(Gewicht);
     sende = roundf(sende * 100) / 100;
-    UDBDebug(String(Katze)+" gewogen: "+String(Gelesen)+" Durchschnitt: "+String(sende));
+    //UDBDebug(String(Katze)+" gewogen: "+String(Gelesen)+" Durchschnitt: "+String(sende));
     MQTT_Send("HomeServer/Tiere/"+String(Katze), String(sende));
   }  
 
@@ -439,23 +431,23 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length) {
 
 void MQTT_Send(String topic, String value) {
     //Serial.println("MQTT " +String(topic)+" "+value) ;
-    if (!client.publish(topic.c_str(), value.c_str(), true)) {
+    if (!client.publish(topic.c_str(), value.c_str(), false)) {
        UDBDebug("MQTT error");  
     };
-    //  UDBDebug(String(topic)+" - "+value);
+   // UDBDebug(String(topic)+" - "+value);
 }
 
 void MQTT_Send(char const * topic, String value) {
     Serial.println("MQTT " +String(topic)+" "+value) ;
-    if (!client.publish(topic, value.c_str(), true)) {
+    if (!client.publish(topic, value.c_str(), false)) {
        UDBDebug("MQTT error");  
     };
-      //UDBDebug(String(topic)+" - "+value);
+    //UDBDebug(String(topic)+" - "+value);
 }
 
 void MQTT_Send(char const * topic, float value) {
-    char buffer[10];
-    snprintf(buffer, 10, "%f", value);
+    char buffer[20];
+    snprintf(buffer, 20, "%f", value);
     MQTT_Send(topic, buffer);
 }
 
