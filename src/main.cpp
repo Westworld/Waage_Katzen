@@ -1,9 +1,6 @@
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
+#include "EspMQTTClient.h"
 #include <WiFiUdp.h>
-#include <ArduinoOTA.h>
 #include "HX711.h"
-#include <PubSubClient.h>
 #include "main.h"
 
 #define UDPDEBUG 1
@@ -12,11 +9,6 @@ WiFiUDP udp;
 const char * udpAddress = "192.168.0.95";
 const int udpPort = 19814;
 #endif
-
-const char* MQTT_BROKER = "192.168.0.46";
-WiFiClient espClient;
-WiFiEventHandler stationDisconnectedHandler;
-PubSubClient client(espClient);
 
 uint32_t mLastTime = 0;
 uint32_t mTimeSeconds = 0;
@@ -107,55 +99,33 @@ float AltGewicht=0;
 int Messungen=0;
 int TaraCounter = 0;
 
+bool StartupDone=false;
+
 HX711 scale;
 
+EspMQTTClient client(
+  WIFI_SSID,
+  WIFI_PASS,
+  "192.168.0.46",  // MQTT Broker server ip
+  "Enzel",   // Can be omitted if not needed
+  "hausen",   // Can be omitted if not needed
+  Katze,     // Client name that uniquely identify your device
+  1883              // The MQTT port, default to 1883. this line can be omitted
+);
 
-// #############################################################
-void WIFI_Connect()
+// This function is called once everything is connected (Wifi and MQTT)
+// WARNING : YOU MUST IMPLEMENT IT IF YOU USE EspMQTTClient
+
+void onConnectionEstablished()
 {
-      WiFi.disconnect();
-      Serial.println("Booting Sketch...");
-      delay(100);
-      WiFi.begin(WIFI_SSID, WIFI_PASS);
-      
-      short counter = 0;
-        while (WiFi.status() != WL_CONNECTED) {
-          delay(100);
-          Serial.print(".");
-          if (++counter > 100)
-            ESP.restart();
-        }
+  Serial.println(String(Katze)+ " started");
+  client.publish("mytopic/test", String(Katze)+ " started"); // You can activate the retain flag by setting the third parameter to true
+ 
+return;
 
-}
+ StartupDone = true;
 
-
-void MQTTreconnect() {
-  if (!client.connected()) {  // MQTT
-        while (!client.connected()) {
-            client.connect(Katze,MQTT_User,MQTT_Pass);
-            delay(100);
-        }
-        UDBDebug(String(Katze)+" reconnect mqtt");
-    }
-}
-
-void onStationDisconnected(const WiFiEventSoftAPModeStationDisconnected& evt) {
-  WIFI_Connect();
-  UDBDebug(String(Katze)+" reconnect Wifi");
-}
-
-void setup() {
-  Serial.begin(115200);
-  Serial.println("CatDogScale");
-  WiFi.mode(WIFI_STA);
-  WiFi.hostname(Hostname);
-  stationDisconnectedHandler = WiFi.onSoftAPModeStationDisconnected(&onStationDisconnected);
-
-  WIFI_Connect();
-   
-  client.setServer(MQTT_BROKER, 1883);
-  client.setCallback(MQTT_callback);
-  MQTTreconnect(); 
+UDBDebug(String(Katze)+ " started");
 
   #ifdef Matti
   Serial.println("Init Display");
@@ -175,42 +145,6 @@ void setup() {
   display.print(("Matti"));
   display.display();
   #endif
-
-  ArduinoOTA.setHostname(Hostname);
-  
-  ArduinoOTA
-    .onStart([]() {
-     //  rdebugVln("Start updating");
-       #ifdef Matti
-        display.setTextSize(2); // Draw 2X-scale text
-        display.setTextColor(SSD1306_WHITE);
-        display.setCursor(10, 50);
-        display.print(("update"));
-        display.display();
-       #endif 
-    });
-    ArduinoOTA.onEnd([]() {
-    //   rdebugVln("End updating");
-    });
-    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    //  sprintf(logString, "Progress: %u", (progress / (total / 100)));
-    //  rdebugVln("%s",logString);
-    });
-    ArduinoOTA.onError([](ota_error_t error) {
-      /*
-      debugV("Error[%d]", error);
-      if (error == OTA_AUTH_ERROR)  rdebugVln("Auth Failed");
-      else if (error == OTA_BEGIN_ERROR)  rdebugVln("Begin Failed");
-      else if (error == OTA_CONNECT_ERROR)  rdebugVln("Connect Failed");
-      else if (error == OTA_RECEIVE_ERROR)  rdebugVln("Receive Failed");
-      else if (error == OTA_END_ERROR)  rdebugVln("End Failed");
-      */
-    });
-
-  ArduinoOTA.begin();  
-
-  //long rssi = WiFi.RSSI();
-  //sprintf(logString, " %d", rssi);
 
     #ifdef Matti
       display.clearDisplay();
@@ -242,187 +176,177 @@ void setup() {
   display.display();
 #endif
 
-  UDBDebug(String(Katze)+ " started");
 }
+
+
+
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("CatDogScale");
+/*
+  client.enableDebuggingMessages(); 
+  client.enableOTA("", 8266); // Enable OTA (Over The Air) updates. Password defaults to MQTTPassword. Port is the default OTA port. Can be overridden with enableOTA("password", port).
+  client.setOnConnectionEstablishedCallback(onConnectionEstablished); 
+*/
+  client.enableDebuggingMessages(); // Enable debugging messages sent to serial output
+  client.enableHTTPWebUpdater(); // Enable the web updater. User and password default to values of MQTTUsername and MQTTPassword. These can be overridded with enableHTTPWebUpdater("user", "password").
+  client.enableOTA("", 8266); // Enable OTA (Over The Air) updates. Password defaults to MQTTPassword. Port is the default OTA port. Can be overridden with enableOTA("password", port).
+  //client.enableLastWillMessage("TestClient/lastwill", "I am going offline");  // You can activate the retain flag by setting the third parameter to true
+
+  
+}
+
+
+
 
 void loop() {
     float Gelesen=0;
   
-  /*
-  if (WiFi.status() != WL_CONNECTED)
-    {
-      WIFI_Connect();
-    }
-   */ 
-    
-  ArduinoOTA.handle();
+    client.loop();
 
 
-  if (!client.connected()) {  // MQTT
-        client.disconnect();
-        delay(250);
-        MQTTreconnect();
-    }
-
-
-  client.loop();
-
-#ifdef Matti
-  //if (ButtonWasClicked) 
-  //  RealhandleInterrupt();
-#endif
-  
-  Gelesen = scale.get_units(10);
-
-
-  #ifdef Buddy
-    if (Gelesen>9) {
-      Serial.println("Buzzer");
-      for (int i=1000;i<=2000;i++) {
-      tone(Buzzer, i); // Im Hauptteil wird nun mit dem Befehl "tone ( x , y )" ein Ton abgegeben.
-      delay(1);
-      } 
-      
-      noTone(Buzzer); // Der Ton wird abgeschaltet
-    }
-  #endif
-  
-
-    if ((Gelesen <= (AltGewicht + 0.1)) && (Gelesen >= (AltGewicht - 0.1)) ) {  // gleicher Wert erneut gelesen
-      
-      if (!((Gelesen <= (Gewicht + 0.1)) && (Gelesen >= (Gewicht - 0.1)) )) {  // Wert noch nicht gesendet
-               #ifdef Matti
-                  display.clearDisplay();
-                  int val_int;
-                  int val_fra;
-                  val_int = (int) Gelesen;   // compute the integer part of the float 
-                  val_fra = round ((Gelesen - (float)val_int) * 10);   // compute 3 decimal places (and convert it to int)
-
-                  sprintf(logString, "%d.%d", val_int, val_fra);
-                  display.setTextSize(4); // Draw 2X-scale text
-                  display.setTextColor(SSD1306_WHITE);
-                  display.setCursor(10, 20);
-                  if (val_int>2)
-                    display.print(logString);
-                  else
-                    display.print("   ");
-                  display.display();
-              #endif
+  if (StartupDone) {
+      #ifdef Matti
+        //if (ButtonWasClicked) 
+        //  RealhandleInterrupt();
+      #endif
         
-              Gewicht = Gelesen;
-              SendeStatus(Gelesen, 1, Gelesen); 
-              TaraCounter = 0;
-      }
-     }
-     else {
-      AltGewicht = Gelesen;
-     }
-
-#ifdef Timmi
-  if ((Gelesen <= 2.0) && (Gelesen >= -4.8 ))  // war 3.8
-#else  
-  if ((Gelesen <= 2.0) && (Gelesen >= -3.8 )) 
-#endif  
-  {
-      if (++TaraCounter > 1800) {
-        TaraCounter = 0;
-       // rdebugVln("Reset Tara");
-        scale.tare(20);  
         Gelesen = scale.get_units(10);
-        SendeStatus(Gewicht, 3, Gelesen);
-                #ifdef Matti
-                  display.clearDisplay();
-                  display.setTextSize(4); // Draw 2X-scale text
-                  display.setTextColor(SSD1306_WHITE);
-                  display.setCursor(10, 20);
-                  display.print("   ");
-                  display.display();
-              #endif       
+
+
+        #ifdef Buddy
+          if (Gelesen>9) {
+            Serial.println("Buzzer");
+            for (int i=1000;i<=2000;i++) {
+            tone(Buzzer, i); // Im Hauptteil wird nun mit dem Befehl "tone ( x , y )" ein Ton abgegeben.
+            delay(1);
+            } 
+            
+            noTone(Buzzer); // Der Ton wird abgeschaltet
+          }
+        #endif
+        
+
+          if ((Gelesen <= (AltGewicht + 0.1)) && (Gelesen >= (AltGewicht - 0.1)) ) {  // gleicher Wert erneut gelesen
+            
+            if (!((Gelesen <= (Gewicht + 0.1)) && (Gelesen >= (Gewicht - 0.1)) )) {  // Wert noch nicht gesendet
+                    #ifdef Matti
+                        display.clearDisplay();
+                        int val_int;
+                        int val_fra;
+                        val_int = (int) Gelesen;   // compute the integer part of the float 
+                        val_fra = round ((Gelesen - (float)val_int) * 10);   // compute 3 decimal places (and convert it to int)
+
+                        sprintf(logString, "%d.%d", val_int, val_fra);
+                        display.setTextSize(4); // Draw 2X-scale text
+                        display.setTextColor(SSD1306_WHITE);
+                        display.setCursor(10, 20);
+                        if (val_int>2)
+                          display.print(logString);
+                        else
+                          display.print("   ");
+                        display.display();
+                    #endif
+              
+                    Gewicht = Gelesen;
+                    SendeStatus(Gelesen, 1, Gelesen); 
+                    TaraCounter = 0;
+            }
+          }
+          else {
+            AltGewicht = Gelesen;
+          }
+
+      #ifdef Timmi
+        if ((Gelesen <= 2.0) && (Gelesen >= -4.8 ))  // war 3.8
+      #else  
+        if ((Gelesen <= 2.0) && (Gelesen >= -3.8 )) 
+      #endif  
+        {
+            if (++TaraCounter > 1800) {
+              TaraCounter = 0;
+            // rdebugVln("Reset Tara");
+              scale.tare(20);  
+              Gelesen = scale.get_units(10);
+              SendeStatus(Gewicht, 3, Gelesen);
+                      #ifdef Matti
+                        display.clearDisplay();
+                        display.setTextSize(4); // Draw 2X-scale text
+                        display.setTextColor(SSD1306_WHITE);
+                        display.setCursor(10, 20);
+                        display.print("   ");
+                        display.display();
+                    #endif       
+            }
+        }
+
+
+
+        Messungen++;
+
+        if (Messungen > 30) {
+          // eine Minute
+          if (Gewicht > 5)
+            SendeStatus(Gewicht, 0, Gelesen);
+          Messungen = 0;
+        }
+        
       }
-  }
-
-
-
-  Messungen++;
-
-  if (Messungen > 30) {
-    // eine Minute
-    if (Gewicht > 5)
-      SendeStatus(Gewicht, 0, Gelesen);
-    Messungen = 0;
-  }
-  mydelay(10);
-  
 }
 
-void mydelay(long thedelay) {
-unsigned long start = millis();
-
-  while ((start+thedelay)>millis()) {
-   // Debug.handle();
-     ArduinoOTA.handle();
-  client.loop();
-    delay(1);
-  }
-}
-
-
-
-
-
-
-float BerechneDurchschnitt(float neu) {
-  if (GewichtAnzahl>9) {
-    for (int i = 0; i<9; i++) {
-      GewichtMittel[i] = GewichtMittel[i+1];
+  float BerechneDurchschnitt(float neu) {
+    if (GewichtAnzahl>9) {
+      for (int i = 0; i<9; i++) {
+        GewichtMittel[i] = GewichtMittel[i+1];
+      }
+      GewichtAnzahl--;
     }
-    GewichtAnzahl--;
-  }
 
-  GewichtMittel[GewichtAnzahl++] = neu;
+    GewichtMittel[GewichtAnzahl++] = neu;
 
-  float mittel = 0;
-  for (int i = 0; i<GewichtAnzahl; i++) {
-      mittel += GewichtMittel[i];
-  }
-  return (mittel / GewichtAnzahl);  
-}
-
-
-// #############################################################
-
-void SendeStatus(float Gewicht, int warum, float Gelesen) {
-  UDBDebug("Waage "+String(Katze)+" " +String(Gewicht));
-
-  float sende = roundf(Gewicht * 100) / 100;
-  if (sende > 2)
-    MQTT_Send("display/Gewicht", sende);
-    //UDBDebug(String(Katze)+" gewogen: "+String(Gelesen));
-
-  if ((sende > KatzeGewichtStart) && (sende < KatzeGewichtEnde)) {
-    sende = BerechneDurchschnitt(Gewicht);
-    sende = roundf(sende * 100) / 100;
-    //UDBDebug(String(Katze)+" gewogen: "+String(Gelesen)+" Durchschnitt: "+String(sende));
-    MQTT_Send("HomeServer/Tiere/"+String(Katze), String(sende));
-  }  
-
-  #ifdef Buddy
-    if (Gewicht>9) {
-      Serial.println("Buzzer");
-      tone(Buzzer, 1000); // Im Hauptteil wird nun mit dem Befehl "tone ( x , y )" ein Ton abgegeben.
-      delay(1000); // mit einer Dauer von 1 Sekunde
-      
-      noTone(Buzzer); // Der Ton wird abgeschaltet
-      delay(100); // Der Lautsprecher bleibt eine Sekunde aus
-      
-      tone(Buzzer, 2000); // Im Hauptteil wird nun mit dem Befehl "tone ( x , y )" ein Ton abgegeben.
-      delay(1000); // mit einer Dauer von 1 Sekunde
-      
-      noTone(Buzzer); // Der Ton wird abgeschaltet
+    float mittel = 0;
+    for (int i = 0; i<GewichtAnzahl; i++) {
+        mittel += GewichtMittel[i];
     }
-  #endif
-  
+    return (mittel / GewichtAnzahl);  
+  }
+
+
+  // #############################################################
+
+  void SendeStatus(float Gewicht, int warum, float Gelesen) {
+    UDBDebug("Waage "+String(Katze)+" " +String(Gewicht));
+
+    float sende = roundf(Gewicht * 100) / 100;
+    if (sende > 2)
+      //MQTT_Send("display/Gewicht", sende);
+      UDBDebug(String(Katze)+" gewogen: "+String(Gelesen));
+
+    if ((sende > KatzeGewichtStart) && (sende < KatzeGewichtEnde)) {
+      sende = BerechneDurchschnitt(Gewicht);
+      sende = roundf(sende * 100) / 100;
+      //UDBDebug(String(Katze)+" gewogen: "+String(Gelesen)+" Durchschnitt: "+String(sende));
+      MQTT_Send("HomeServer/Tiere/"+String(Katze), String(sende));
+    }  
+
+    #ifdef Buddy
+      if (Gewicht>9) {
+        Serial.println("Buzzer");
+        tone(Buzzer, 1000); // Im Hauptteil wird nun mit dem Befehl "tone ( x , y )" ein Ton abgegeben.
+        delay(1000); // mit einer Dauer von 1 Sekunde
+        
+        noTone(Buzzer); // Der Ton wird abgeschaltet
+        delay(100); // Der Lautsprecher bleibt eine Sekunde aus
+        
+        tone(Buzzer, 2000); // Im Hauptteil wird nun mit dem Befehl "tone ( x , y )" ein Ton abgegeben.
+        delay(1000); // mit einer Dauer von 1 Sekunde
+        
+        noTone(Buzzer); // Der Ton wird abgeschaltet
+      }
+    #endif
 }
+
 
 
 void MQTT_callback(char* topic, byte* payload, unsigned int length) {
@@ -430,19 +354,15 @@ void MQTT_callback(char* topic, byte* payload, unsigned int length) {
 }
 
 void MQTT_Send(String topic, String value) {
-    //Serial.println("MQTT " +String(topic)+" "+value) ;
-    if (!client.publish(topic.c_str(), value.c_str(), false)) {
-       UDBDebug("MQTT error");  
-    };
-   // UDBDebug(String(topic)+" - "+value);
+    client.publish(topic, value);
+   UDBDebug(String(topic)+" - "+value);
 }
 
 void MQTT_Send(char const * topic, String value) {
     Serial.println("MQTT " +String(topic)+" "+value) ;
-    if (!client.publish(topic, value.c_str(), false)) {
-       UDBDebug("MQTT error");  
-    };
-    //UDBDebug(String(topic)+" - "+value);
+    client.publish(topic, value.c_str());
+
+    UDBDebug(String(topic)+" - "+value);
 }
 
 void MQTT_Send(char const * topic, float value) {
