@@ -29,6 +29,15 @@ const int Buzzer =D7;
 //#define Buddy  // definition in platformio.ini, wählen env aus!!!
 // nicht für Timmi nehmen, dafür Timmi WS2812
 
+#ifdef testcat
+  #define Katze "testcat"
+  #define Hostname "Scaletest"
+
+  float KatzeGewichtStart = 6.5;
+float KatzeGewichtEnde = 7.2;
+const float kalibrierung = 23000.F; //21100.F;
+#endif
+
 #ifdef Matti
   #define Katze "Matti"
   #define Hostname "ScaleMatti"
@@ -121,7 +130,6 @@ void onConnectionEstablished()
   Serial.println(String(Katze)+ " started");
   client.publish("mytopic/test", String(Katze)+ " started"); // You can activate the retain flag by setting the third parameter to true
  
-return;
 
  StartupDone = true;
 
@@ -141,16 +149,11 @@ UDBDebug(String(Katze)+ " started");
   
   display.setTextSize(3); // Draw 2X-scale text
   display.setTextColor(SSD1306_WHITE);
-  display.setCursor(10, 20);
+  display.setCursor(10, 10);
   display.print(("Matti"));
-  display.display();
-  #endif
 
-    #ifdef Matti
-      display.clearDisplay();
       display.setTextSize(1); // Draw 2X-scale text
-      display.setTextColor(SSD1306_WHITE);
-      display.setCursor(10, 20);
+      display.setCursor(10, 25);
       display.println(WiFi.localIP());
       display.display();
 
@@ -167,15 +170,6 @@ UDBDebug(String(Katze)+ " started");
 
   Serial.println("Scale after reset "+scale.read());
 
-#ifdef Matti
-  display.clearDisplay();
-  display.setTextSize(3); // Draw 2X-scale text
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(10, 20);
-  display.print(("Matti"));
-  display.display();
-#endif
-
 }
 
 
@@ -184,17 +178,12 @@ UDBDebug(String(Katze)+ " started");
 void setup() {
   Serial.begin(115200);
   Serial.println("CatDogScale");
-/*
+
   client.enableDebuggingMessages(); 
   client.enableOTA("", 8266); // Enable OTA (Over The Air) updates. Password defaults to MQTTPassword. Port is the default OTA port. Can be overridden with enableOTA("password", port).
   client.setOnConnectionEstablishedCallback(onConnectionEstablished); 
-*/
-  client.enableDebuggingMessages(); // Enable debugging messages sent to serial output
   client.enableHTTPWebUpdater(); // Enable the web updater. User and password default to values of MQTTUsername and MQTTPassword. These can be overridded with enableHTTPWebUpdater("user", "password").
-  client.enableOTA("", 8266); // Enable OTA (Over The Air) updates. Password defaults to MQTTPassword. Port is the default OTA port. Can be overridden with enableOTA("password", port).
-  //client.enableLastWillMessage("TestClient/lastwill", "I am going offline");  // You can activate the retain flag by setting the third parameter to true
-
-  
+ 
 }
 
 
@@ -293,6 +282,7 @@ void loop() {
         }
         
       }
+      delay(20);
 }
 
   float BerechneDurchschnitt(float neu) {
