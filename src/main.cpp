@@ -10,8 +10,7 @@ const char * udpAddress = "192.168.0.95";
 const int udpPort = 19814;
 #endif
 
-uint32_t mLastTime = 0;
-uint32_t mTimeSeconds = 0;
+unsigned long previousMillis=0;
 
 float GewichtMittel[11];
 int GewichtAnzahl=0;
@@ -179,11 +178,14 @@ void setup() {
   Serial.begin(115200);
   Serial.println("CatDogScale");
 
+  WiFi.setSleepMode(WIFI_NONE_SLEEP); 
+
   client.enableDebuggingMessages(); 
   client.enableOTA("", 8266); // Enable OTA (Over The Air) updates. Password defaults to MQTTPassword. Port is the default OTA port. Can be overridden with enableOTA("password", port).
   client.setOnConnectionEstablishedCallback(onConnectionEstablished); 
   client.enableHTTPWebUpdater(); // Enable the web updater. User and password default to values of MQTTUsername and MQTTPassword. These can be overridded with enableHTTPWebUpdater("user", "password").
  
+ previousMillis = millis();
 }
 
 
@@ -194,15 +196,18 @@ void loop() {
   
     client.loop();
 
+    unsigned long curMillis=millis();
+    if (curMillis < previousMillis)
+      previousMillis = curMillis;
+
+    if (curMillis < (previousMillis+20000)) 
+      return;  // kein messen, erst in 20 Sekunden
+
+    previousMillis = curMillis;
 
   if (StartupDone) {
-      #ifdef Matti
-        //if (ButtonWasClicked) 
-        //  RealhandleInterrupt();
-      #endif
         
         Gelesen = scale.get_units(10);
-
 
         #ifdef Buddy
           if (Gelesen>9) {
@@ -216,7 +221,6 @@ void loop() {
           }
         #endif
         
-
           if ((Gelesen <= (AltGewicht + 0.1)) && (Gelesen >= (AltGewicht - 0.1)) ) {  // gleicher Wert erneut gelesen
             
             if (!((Gelesen <= (Gewicht + 0.1)) && (Gelesen >= (Gewicht - 0.1)) )) {  // Wert noch nicht gesendet
@@ -247,6 +251,7 @@ void loop() {
             AltGewicht = Gelesen;
           }
 
+// Tara
       #ifdef Timmi
         if ((Gelesen <= 2.0) && (Gelesen >= -4.8 ))  // war 3.8
       #else  
@@ -269,12 +274,9 @@ void loop() {
                     #endif       
             }
         }
+// end tara
 
-
-
-        Messungen++;
-
-        if (Messungen > 30) {
+        if (++Messungen > 30) {
           // eine Minute
           if (Gewicht > 5)
             SendeStatus(Gewicht, 0, Gelesen);
@@ -282,7 +284,7 @@ void loop() {
         }
         
       }
-      delay(20);
+      delay(1);
 }
 
   float BerechneDurchschnitt(float neu) {
@@ -311,12 +313,11 @@ void loop() {
     float sende = roundf(Gewicht * 100) / 100;
     if (sende > 2)
       //MQTT_Send("display/Gewicht", sende);
-      UDBDebug(String(Katze)+" gewogen: "+String(Gelesen));
+      //UDBDebug(String(Katze)+" gewogen: "+String(Gelesen));
 
     if ((sende > KatzeGewichtStart) && (sende < KatzeGewichtEnde)) {
       sende = BerechneDurchschnitt(Gewicht);
       sende = roundf(sende * 100) / 100;
-      //UDBDebug(String(Katze)+" gewogen: "+String(Gelesen)+" Durchschnitt: "+String(sende));
       MQTT_Send("HomeServer/Tiere/"+String(Katze), String(sende));
     }  
 
