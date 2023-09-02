@@ -200,8 +200,8 @@ void loop() {
     if (curMillis < previousMillis)
       previousMillis = curMillis;
 
-    if (curMillis < (previousMillis+20000)) 
-      return;  // kein messen, erst in 20 Sekunden
+    if (curMillis < (previousMillis+5000)) 
+      return;  // kein messen, erst in 5 Sekunden
 
     previousMillis = curMillis;
 
@@ -276,7 +276,7 @@ void loop() {
         }
 // end tara
 
-        if (++Messungen > 30) {
+        if (++Messungen > 12) {
           // eine Minute
           if (Gewicht > 5)
             SendeStatus(Gewicht, 0, Gelesen);
